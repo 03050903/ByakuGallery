@@ -106,21 +106,19 @@ public class TileBitmapDrawable extends Drawable {
 
 		mScreenNail = screenNail;
 
-		// The Tile can be reduced up to half of its size until the next level
-		// of tiles is displayed
-		// It can also be displayed just a portion of the tile on each size, so
-		// we need to add 1
-		final int maxHorizontalTiles = (int) Math.ceil(2 * metrics.widthPixels / (float) mTileSize) + 1;
-		final int maxVerticalTiles = (int) Math.ceil(2 * metrics.heightPixels / (float) mTileSize) + 1;
-
-		// The shared cache will have the minimum required size to display all
-		// visible tiles
-		// Here, we multiply by 4 because in ARGB_8888 config, each pixel is
-		// stored on 4 bytes
-		final int cacheSize = 4 * maxHorizontalTiles * maxVerticalTiles * mTileSize * mTileSize;
-
 		synchronized (sBitmapCacheLock) {
 			if (sBitmapCache == null) {
+				// The Tile can be reduced up to half of its size until the next
+				// level of tiles is displayed
+				final int maxHorizontalTiles = (int) Math.ceil(2 * metrics.widthPixels / (float) mTileSize);
+				final int maxVerticalTiles = (int) Math.ceil(2 * metrics.heightPixels / (float) mTileSize);
+
+				// The shared cache will have the minimum required size to
+				// display all visible tiles
+				// Here, we multiply by 4 because in ARGB_8888 config, each
+				// pixel is stored on 4 bytes
+				final int cacheSize = 4 * maxHorizontalTiles * maxVerticalTiles * mTileSize * mTileSize;
+
 				sBitmapCache = new BitmapLruCache(cacheSize);
 			}
 		}
