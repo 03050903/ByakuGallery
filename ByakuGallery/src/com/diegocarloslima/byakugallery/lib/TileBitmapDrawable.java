@@ -167,6 +167,9 @@ public class TileBitmapDrawable extends Drawable {
 
 	@Override
 	public void draw(Canvas canvas) {
+		if (mScreenNail == null) {
+			return; // prevent NullPointerException.
+		}
 		final ImageView parentView = mParentView.get();
 		if (parentView == null) {
 			return;
