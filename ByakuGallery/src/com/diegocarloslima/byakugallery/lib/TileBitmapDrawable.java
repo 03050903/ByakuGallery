@@ -366,8 +366,7 @@ public class TileBitmapDrawable extends Drawable {
 			}
 
 			final DisplayMetrics metrics = new DisplayMetrics();
-			final WindowManager wm = (WindowManager) mImageView.getContext().getSystemService(Context.WINDOW_SERVICE);
-			wm.getDefaultDisplay().getMetrics(metrics);
+			getDisplayMetrics(mImageView.getContext(), metrics);
 
 			final float minScale = Math.min(metrics.widthPixels / (float) decoder.getWidth(),  metrics.heightPixels / (float) decoder.getHeight());
 			final int levelCount = Math.max(1, MathUtils.ceilLog2(decoder.getWidth() / (decoder.getWidth() * minScale)));

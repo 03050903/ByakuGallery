@@ -28,7 +28,7 @@ public class TouchImageView extends ImageView {
 	private final float[] mMatrixValues = new float[9];
 
 	private float mScale;
-	private float mMaxScale = 1;
+	private float mMaxScale;
 	private float mTranslationX;
 	private float mTranslationY;
 
@@ -48,7 +48,6 @@ public class TouchImageView extends ImageView {
 
 	public TouchImageView(Context context, AttributeSet attrs, int defStyle) {
 		super(context, attrs, defStyle);
-
 		final TouchGestureDetector.OnTouchGestureListener listener = new TouchGestureDetector.OnTouchGestureListener() {
 
 			@Override
@@ -214,8 +213,14 @@ public class TouchImageView extends ImageView {
 		final int oldMeasuredHeight = getMeasuredHeight();
 
 		super.onMeasure(widthMeasureSpec, heightMeasureSpec);
-
-		if(oldMeasuredWidth != getMeasuredWidth() || oldMeasuredHeight != getMeasuredHeight()) {
+        int measuredWidth = getMeasuredWidth();
+        int measuredHeight = getMeasuredHeight();
+        // set max scale to fit measured size
+        if(mMaxScale  == 0f && mDrawableIntrinsicWidth > 0 && mDrawableIntrinsicHeight>0){
+            float maxScale = Math.max(getMeasuredWidth() / (float)mDrawableIntrinsicWidth, getMeasuredHeight() / (float)mDrawableIntrinsicHeight);
+            setMaxScale(maxScale);
+        }
+		if(oldMeasuredWidth != measuredWidth || oldMeasuredHeight != measuredHeight) {
 			resetToInitialState();
 		}
 	}
@@ -300,10 +305,10 @@ public class TouchImageView extends ImageView {
 	private void resetToInitialState() {
 		mMatrix.reset();
 		final float minScale = getMinScale();
+		// no measured size
+		if(minScale == 0f)
+		    return;
 		mMatrix.postScale(minScale, minScale);
-
-		final float[] values = new float[9];
-		mMatrix.getValues(values);
 
 		final float freeSpaceHorizontal = (getMeasuredWidth() - (mDrawableIntrinsicWidth * minScale)) / 2F;
 		final float freeSpaceVertical = (getMeasuredHeight() - (mDrawableIntrinsicHeight * minScale)) / 2F;
@@ -320,8 +325,9 @@ public class TouchImageView extends ImageView {
 	}
 
 	private float getMinScale() {
+	    if(getMeasuredWidth() == 0 || getMeasuredHeight() == 0 || mDrawableIntrinsicWidth == 0 || mDrawableIntrinsicHeight == 0) return 0f;
 		float minScale = Math.min(getMeasuredWidth() / (float) mDrawableIntrinsicWidth, getMeasuredHeight() / (float) mDrawableIntrinsicHeight);
-		if(minScale > mMaxScale) {
+		if(minScale > mMaxScale && mMaxScale != 0f) {
 			minScale = mMaxScale;
 		}
 		return minScale;
