@@ -64,14 +64,26 @@ public class TileBitmapDrawable extends Drawable {
 	private final Rect mVisibleAreaRect = new Rect();
 	private final Rect mScreenNailRect = new Rect();
 
+	/**
+	 * Currently only the JPEG and PNG formats are supported.
+	 * @see BitmapRegionDecoder#newInstance(String, boolean)
+	 */
 	public static void attachTileBitmapDrawable(ImageView imageView, String path, Drawable placeHolder, OnInitializeListener listener) {
 		new InitializationTask(imageView, placeHolder, listener).execute(path);
 	}
 
+	/**
+     * Currently only the JPEG and PNG formats are supported.
+     * @see BitmapRegionDecoder#newInstance(FileDescriptor, boolean)
+     */
 	public static void attachTileBitmapDrawable(ImageView imageView, FileDescriptor fd, Drawable placeHolder, OnInitializeListener listener) {
 		new InitializationTask(imageView, placeHolder, listener).execute(fd);
 	}
 
+	/**
+     * Currently only the JPEG and PNG formats are supported.
+     * @see BitmapRegionDecoder#newInstance(InputStream, boolean)
+     */
 	public static void attachTileBitmapDrawable(ImageView imageView, InputStream is, Drawable placeHolder, OnInitializeListener listener) {
 		new InitializationTask(imageView, placeHolder, listener).execute(is);
 	}
@@ -269,6 +281,10 @@ public class TileBitmapDrawable extends Drawable {
 		public void onStartInitialization();
 
 		public void onEndInitialization();
+		/**
+		 * Image failed to decode 
+		 */
+        public void onErrorInitialization();
 	}
 
 	private static final class Tile {
@@ -361,8 +377,8 @@ public class TileBitmapDrawable extends Drawable {
 				} else {
 					decoder = BitmapRegionDecoder.newInstance((InputStream) params[0], false);
 				} 
-			} catch (Exception e) {
-				throw new RuntimeException(e);
+			} catch (Throwable e) {
+			    return null;
 			}
 
 			final DisplayMetrics metrics = new DisplayMetrics();
@@ -399,6 +415,10 @@ public class TileBitmapDrawable extends Drawable {
 
 		@Override
 		protected void onPostExecute(TileBitmapDrawable result) {
+		    if(result == null && mListener != null) {
+                mListener.onErrorInitialization();
+                return;
+		    }
 			if(mListener != null) {
 				mListener.onEndInitialization();
 			}
