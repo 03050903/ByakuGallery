@@ -31,18 +31,24 @@ import android.widget.ImageView;
 
 public class TileBitmapDrawable extends Drawable {
 
-	private static final int TILE_SIZE_DENSITY_HIGH = 256;
+    // The hardware must support textures at least 2048x2048 pixels
+    // http://stackoverflow.com/questions/7428996/hw-accelerated-activity-how-to-get-opengl-texture-size-limit
+    private static final int BITMAP_TEXTURE_SIZE = 2048;
+    
+    private static final int TILE_SIZE_DENSITY_HIGH = 256;
 	private static final int TILE_SIZE_DEFAULT = 128;
 
 	// A shared cache is used between instances to minimize OutOfMemoryError
 	private static BitmapLruCache sBitmapCache;
 	private static final Object sBitmapCacheLock = new Object();
 
-	// Instance ids are used to identify a cache hit for a specific instance of TileBitmapDrawable on the shared BitmapLruCache
+	// Instance ids are used to identify a cache hit for a specific instance of
+	// TileBitmapDrawable on the shared BitmapLruCache
 	private static final AtomicInteger sInstanceIds = new AtomicInteger(1);
 	private final int mInstanceId = sInstanceIds.getAndIncrement();
 
-	// The reference of the parent ImageView is needed in order to get the Matrix values and determine the visible area
+	// The reference of the parent ImageView is needed in order to get the
+	// Matrix values and determine the visible area
 	private final WeakReference<ImageView> mParentView;
 
 	private final BitmapRegionDecoder mRegionDecoder;
@@ -63,6 +69,11 @@ public class TileBitmapDrawable extends Drawable {
 	private final Rect mTileRect = new Rect();
 	private final Rect mVisibleAreaRect = new Rect();
 	private final Rect mScreenNailRect = new Rect();
+
+	public static AsyncTask<Object, ?, TileBitmapDrawable> createTask(ImageView imageView, Drawable placeHolder,
+	        OnInitializeListener listener) {
+		return new InitializationTask(imageView, placeHolder, listener);
+	}
 
 	/**
 	 * Currently only the JPEG and PNG formats are supported.
@@ -91,7 +102,7 @@ public class TileBitmapDrawable extends Drawable {
 	private TileBitmapDrawable(ImageView parentView, BitmapRegionDecoder decoder, Bitmap screenNail) {
 		mParentView = new WeakReference<ImageView>(parentView);
 
-		synchronized(decoder) {
+		synchronized (decoder) {
 			mRegionDecoder = decoder;
 			mIntrinsicWidth = mRegionDecoder.getWidth();
 			mIntrinsicHeight = mRegionDecoder.getHeight();
@@ -104,14 +115,17 @@ public class TileBitmapDrawable extends Drawable {
 
 		mScreenNail = screenNail;
 
-		synchronized(sBitmapCacheLock) {
-			if(sBitmapCache == null) {
-				// The Tile can be reduced up to half of its size until the next level of tiles is displayed
+		synchronized (sBitmapCacheLock) {
+			if (sBitmapCache == null) {
+				// The Tile can be reduced up to half of its size until the next
+				// level of tiles is displayed
 				final int maxHorizontalTiles = (int) Math.ceil(2 * metrics.widthPixels / (float) mTileSize);
 				final int maxVerticalTiles = (int) Math.ceil(2 * metrics.heightPixels / (float) mTileSize);
 
-				// The shared cache will have the minimum required size to display all visible tiles
-				// Here, we multiply by 4 because in ARGB_8888 config, each pixel is stored on 4 bytes
+				// The shared cache will have the minimum required size to
+				// display all visible tiles
+				// Here, we multiply by 4 because in ARGB_8888 config, each
+				// pixel is stored on 4 bytes
 				final int cacheSize = 4 * maxHorizontalTiles * maxVerticalTiles * mTileSize * mTileSize;
 
 				sBitmapCache = new BitmapLruCache(cacheSize);
@@ -125,7 +139,7 @@ public class TileBitmapDrawable extends Drawable {
 	@Override
 	public void setAlpha(int alpha) {
 		final int oldAlpha = mPaint.getAlpha();
-		if(alpha != oldAlpha) {
+		if (alpha != oldAlpha) {
 			mPaint.setAlpha(alpha);
 			invalidateSelf();
 		}
@@ -162,8 +176,11 @@ public class TileBitmapDrawable extends Drawable {
 
 	@Override
 	public void draw(Canvas canvas) {
+		if (mScreenNail == null) {
+			return; // prevent NullPointerException.
+		}
 		final ImageView parentView = mParentView.get();
-		if(parentView == null) {
+		if (parentView == null) {
 			return;
 		}
 
@@ -176,17 +193,22 @@ public class TileBitmapDrawable extends Drawable {
 		final float translationY = mMatrixValues[Matrix.MTRANS_Y];
 		final float scale = mMatrixValues[Matrix.MSCALE_X];
 
-		// If the matrix values have changed, the decode queue must be cleared in order to avoid decoding unused tiles
-		if(translationX != mLastMatrixValues[Matrix.MTRANS_X] || translationY != mLastMatrixValues[Matrix.MTRANS_Y] || scale != mLastMatrixValues[Matrix.MSCALE_X]) {
+		// If the matrix values have changed, the decode queue must be cleared
+		// in order to avoid decoding unused tiles
+		if (translationX != mLastMatrixValues[Matrix.MTRANS_X] || translationY != mLastMatrixValues[Matrix.MTRANS_Y]
+		        || scale != mLastMatrixValues[Matrix.MSCALE_X]) {
 			mDecodeQueue.clear();
 		}
 
 		mLastMatrixValues = Arrays.copyOf(mMatrixValues, mMatrixValues.length);
 
-		// The scale required to display the whole Bitmap inside the ImageView. It will be the minimum allowed scale value
-		final float minScale = Math.min(parentViewWidth / (float) mIntrinsicWidth, parentViewHeight / (float) mIntrinsicHeight);
+		// The scale required to display the whole Bitmap inside the ImageView.
+		// It will be the minimum allowed scale value
+		final float minScale = Math.min(parentViewWidth / (float) mIntrinsicWidth, parentViewHeight
+		        / (float) mIntrinsicHeight);
 
-		// The number of allowed levels for this Bitmap. Each subsequent level is half size of the previous one
+		// The number of allowed levels for this Bitmap. Each subsequent level
+		// is half size of the previous one
 		final int levelCount = Math.max(1, MathUtils.ceilLog2(mIntrinsicWidth / (mIntrinsicWidth * minScale)));
 
 		// sampleSize = 2 ^ currentLevel
@@ -200,45 +222,53 @@ public class TileBitmapDrawable extends Drawable {
 		final int visibleAreaLeft = Math.max(0, (int) (-translationX / scale));
 		final int visibleAreaTop = Math.max(0, (int) (-translationY / scale));
 		final int visibleAreaRight = Math.min(mIntrinsicWidth, Math.round((-translationX + parentViewWidth) / scale));
-		final int visibleAreaBottom = Math.min(mIntrinsicHeight, Math.round((-translationY + parentViewHeight) / scale));
+		final int visibleAreaBottom = Math
+		        .min(mIntrinsicHeight, Math.round((-translationY + parentViewHeight) / scale));
 		mVisibleAreaRect.set(visibleAreaLeft, visibleAreaTop, visibleAreaRight, visibleAreaBottom);
 
 		boolean cacheMiss = false;
 
-		for(int i = 0; i < horizontalTiles; i++) {
-			for(int j = 0; j < verticalTiles; j++) {
+		for (int i = 0; i < horizontalTiles; i++) {
+			for (int j = 0; j < verticalTiles; j++) {
 
 				final int tileLeft = i * currentTileSize;
 				final int tileTop = j * currentTileSize;
-				final int tileRight = (i + 1) * currentTileSize <= mIntrinsicWidth ? (i + 1) * currentTileSize : mIntrinsicWidth;
-				final int tileBottom = (j + 1) * currentTileSize <= mIntrinsicHeight ? (j + 1) * currentTileSize : mIntrinsicHeight;
+				final int tileRight = (i + 1) * currentTileSize <= mIntrinsicWidth ? (i + 1) * currentTileSize
+				        : mIntrinsicWidth;
+				final int tileBottom = (j + 1) * currentTileSize <= mIntrinsicHeight ? (j + 1) * currentTileSize
+				        : mIntrinsicHeight;
 				mTileRect.set(tileLeft, tileTop, tileRight, tileBottom);
 
-				if(Rect.intersects(mVisibleAreaRect, mTileRect)) {
+				if (Rect.intersects(mVisibleAreaRect, mTileRect)) {
 
 					final Tile tile = new Tile(mInstanceId, mTileRect, i, j, currentLevel);
 
 					Bitmap cached = null;
-					synchronized(sBitmapCacheLock) {
+					synchronized (sBitmapCacheLock) {
 						cached = sBitmapCache.get(tile.getKey());
 					}
 
-					if(cached != null) {
+					if (cached != null) {
 						canvas.drawBitmap(cached, null, mTileRect, mPaint);
 					} else {
 						cacheMiss = true;
 
 						synchronized (mDecodeQueue) {
-							if(!mDecodeQueue.contains(tile)) {
+							if (!mDecodeQueue.contains(tile)) {
 								mDecodeQueue.add(tile);
 							}
 						}
 
-						// The screenNail is used while the proper tile is being decoded
-						final int screenNailLeft = Math.round(tileLeft * mScreenNail.getWidth() / (float) mIntrinsicWidth);
-						final int screenNailTop = Math.round(tileTop * mScreenNail.getHeight() / (float) mIntrinsicHeight);
-						final int screenNailRight = Math.round(tileRight * mScreenNail.getWidth() / (float) mIntrinsicWidth);
-						final int screenNailBottom = Math.round(tileBottom * mScreenNail.getHeight() / (float) mIntrinsicHeight);
+						// The screenNail is used while the proper tile is being
+						// decoded
+						final int screenNailLeft = Math.round(tileLeft * mScreenNail.getWidth()
+						        / (float) mIntrinsicWidth);
+						final int screenNailTop = Math.round(tileTop * mScreenNail.getHeight()
+						        / (float) mIntrinsicHeight);
+						final int screenNailRight = Math.round(tileRight * mScreenNail.getWidth()
+						        / (float) mIntrinsicWidth);
+						final int screenNailBottom = Math.round(tileBottom * mScreenNail.getHeight()
+						        / (float) mIntrinsicHeight);
 						mScreenNailRect.set(screenNailLeft, screenNailTop, screenNailRight, screenNailBottom);
 
 						canvas.drawBitmap(mScreenNail, mScreenNailRect, mTileRect, mPaint);
@@ -247,8 +277,9 @@ public class TileBitmapDrawable extends Drawable {
 			}
 		}
 
-		// If we had a cache miss, we will need to redraw until all needed tiles have been decoded by our worker thread
-		if(cacheMiss) {
+		// If we had a cache miss, we will need to redraw until all needed tiles
+		// have been decoded by our worker thread
+		if (cacheMiss) {
 			invalidateSelf();
 		}
 	}
@@ -263,16 +294,17 @@ public class TileBitmapDrawable extends Drawable {
 		final WindowManager wm = (WindowManager) context.getSystemService(Context.WINDOW_SERVICE);
 		final Display display = wm.getDefaultDisplay();
 
-		if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1) {
+		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1) {
 			display.getRealMetrics(outMetrics);
 		} else {
 			display.getMetrics(outMetrics);
-			if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.ICE_CREAM_SANDWICH) {
+			if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.ICE_CREAM_SANDWICH) {
 				try {
 					outMetrics.widthPixels = (Integer) Display.class.getMethod("getRawWidth").invoke(display);
 					outMetrics.heightPixels = (Integer) Display.class.getMethod("getRawHeight").invoke(display);
 					return;
-				} catch (Exception e) {}
+				} catch (Exception e) {
+				}
 			}
 		}
 	}
@@ -315,10 +347,10 @@ public class TileBitmapDrawable extends Drawable {
 
 		@Override
 		public boolean equals(Object o) {
-			if(this == o) {
+			if (this == o) {
 				return true;
 			}
-			if(o instanceof TileBitmapDrawable) {
+			if (o instanceof TileBitmapDrawable) {
 				return getKey().equals(((Tile) o).getKey());
 			}
 			return false;
@@ -338,10 +370,9 @@ public class TileBitmapDrawable extends Drawable {
 
 		@TargetApi(Build.VERSION_CODES.KITKAT)
 		private static int getBitmapSize(Bitmap bitmap) {
-			if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
+			if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
 				return bitmap.getAllocationByteCount();
-			}
-			else if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB_MR1) {
+			} else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB_MR1) {
 				return bitmap.getByteCount();
 			}
 			return bitmap.getRowBytes() * bitmap.getHeight();
@@ -357,10 +388,10 @@ public class TileBitmapDrawable extends Drawable {
 			mImageView = imageView;
 			mListener = listener;
 
-			if(mListener != null) {
+			if (mListener != null) {
 				mListener.onStartInitialization();
 			}
-			if(placeHolder != null) {
+			if (placeHolder != null) {
 				mImageView.setImageDrawable(placeHolder);
 			}
 		}
@@ -370,9 +401,9 @@ public class TileBitmapDrawable extends Drawable {
 			BitmapRegionDecoder decoder = null;
 
 			try {
-				if(params[0] instanceof String) {
+				if (params[0] instanceof String) {
 					decoder = BitmapRegionDecoder.newInstance((String) params[0], false);
-				} else if(params[0] instanceof FileDescriptor) {
+				} else if (params[0] instanceof FileDescriptor) {
 					decoder = BitmapRegionDecoder.newInstance((FileDescriptor) params[0], false);
 				} else {
 					decoder = BitmapRegionDecoder.newInstance((InputStream) params[0], false);
@@ -384,8 +415,11 @@ public class TileBitmapDrawable extends Drawable {
 			final DisplayMetrics metrics = new DisplayMetrics();
 			getDisplayMetrics(mImageView.getContext(), metrics);
 
-			final float minScale = Math.min(metrics.widthPixels / (float) decoder.getWidth(),  metrics.heightPixels / (float) decoder.getHeight());
-			final int levelCount = Math.max(1, MathUtils.ceilLog2(decoder.getWidth() / (decoder.getWidth() * minScale)));
+			final int maxSize = Math.min(BITMAP_TEXTURE_SIZE, Math.max(metrics.widthPixels, metrics.heightPixels));
+			final float minScale = Math
+			        .min(maxSize / (float) decoder.getWidth(), maxSize / (float) decoder.getHeight());
+			final int levelCount = Math
+			        .max(1, MathUtils.ceilLog2(decoder.getWidth() / (decoder.getWidth() * minScale)));
 
 			final Rect screenNailRect = new Rect(0, 0, decoder.getWidth(), decoder.getHeight());
 
@@ -395,22 +429,36 @@ public class TileBitmapDrawable extends Drawable {
 			options.inSampleSize = (1 << (levelCount - 1));
 
 			Bitmap screenNail = null;
-			try {
-				final Bitmap bitmap = decoder.decodeRegion(screenNailRect, options);
-				screenNail = Bitmap.createScaledBitmap(bitmap, Math.round(decoder.getWidth() * minScale), Math.round(decoder.getHeight() * minScale), true);
-				if(!bitmap.equals(screenNail)) {
-					bitmap.recycle();
+			boolean decodeSuccess = false;
+			while (decodeSuccess == false) {
+				try {
+					final Bitmap bitmap = decoder.decodeRegion(screenNailRect, options);
+					if (bitmap != null && bitmap.getWidth() > 0 && bitmap.getHeight() > 0) {
+						screenNail = Bitmap.createScaledBitmap(bitmap, Math.round(decoder.getWidth() * minScale),
+						        Math.round(decoder.getHeight() * minScale), true);
+						if (bitmap != screenNail) {
+							bitmap.recycle();
+						}
+					}
+					decodeSuccess = true;
+				} catch (OutOfMemoryError e) {
+					options.inSampleSize <<= 1;
 				}
-
-			} catch (OutOfMemoryError e) {
-				// We're under memory pressure. Let's try again with a smaller size
-				options.inSampleSize <<= 1;
-				screenNail = decoder.decodeRegion(screenNailRect, options);
 			}
 
 			TileBitmapDrawable drawable = new TileBitmapDrawable(mImageView, decoder, screenNail);
 
 			return drawable;
+		}
+
+		@TargetApi(Build.VERSION_CODES.HONEYCOMB)
+		@Override
+		protected void onCancelled(TileBitmapDrawable result) {
+			if (result != null && result.mDecoderWorker != null) {
+				result.mDecoderWorker.quit();
+			}
+
+			super.onCancelled(result);
 		}
 
 		@Override
@@ -442,8 +490,8 @@ public class TileBitmapDrawable extends Drawable {
 
 		@Override
 		public void run() {
-			while(true) {
-				if(mDrawableReference.get() == null) {
+			while (true) {
+				if (mDrawableReference.get() == null) {
 					return;
 				}
 
@@ -451,14 +499,14 @@ public class TileBitmapDrawable extends Drawable {
 				try {
 					tile = mDecodeQueue.take();
 				} catch (InterruptedException e) {
-					if(mQuit) {
+					if (mQuit) {
 						return;
 					}
 					continue;
 				}
 
-				synchronized(sBitmapCacheLock) {
-					if(sBitmapCache.get(tile.getKey()) != null) {
+				synchronized (sBitmapCacheLock) {
+					if (sBitmapCache.get(tile.getKey()) != null) {
 						continue;
 					}
 				}
@@ -466,22 +514,22 @@ public class TileBitmapDrawable extends Drawable {
 				final BitmapFactory.Options options = new BitmapFactory.Options();
 				options.inPreferredConfig = Config.ARGB_8888;
 				options.inPreferQualityOverSpeed = true;
-				options.inSampleSize =  (1 << tile.mLevel);
+				options.inSampleSize = (1 << tile.mLevel);
 
 				Bitmap bitmap = null;
-				synchronized(mDecoder) {
+				synchronized (mDecoder) {
 					try {
 						bitmap = mDecoder.decodeRegion(tile.mTileRect, options);
-					} catch(OutOfMemoryError e) {
+					} catch (OutOfMemoryError e) {
 						// Skip for now. The screenNail will be used instead
 					}
 				}
 
-				if(bitmap == null) {
-					continue;
+				if (bitmap == null) {
+					return;
 				}
 
-				synchronized(sBitmapCacheLock) {
+				synchronized (sBitmapCacheLock) {
 					sBitmapCache.put(tile.getKey(), bitmap);
 				}
 			}
